@@ -67,8 +67,10 @@ float rs() { return rnd::uniformS(); } // random float in range [-1, 1]
 struct MyApp : public App {
   //Parameters
   ParameterInt N{"/N", "", 10, 2, 100};
-  Parameter neighbor_distance{"/n", "", 0.01, 0.01, 3};
-  ParameterColor color{"/color"};
+  Parameter T{"/Threshold distance", "", 0.01, 0.01, 1.5}; // Threshold distance for neighbors
+  ParameterColor color{"/color"}; // Background color
+  Parameter K{"/Number of neighbors", "", 5, 1, 20}; // Number of neighbors to consider
+  Parameter distanceToCenter{"/distanceToCenter", "", 0.5, 0.01, 3};
 
 
   Light light;
@@ -84,7 +86,9 @@ struct MyApp : public App {
     auto GUIdomain = GUIDomain::enableGUI(defaultWindowDomain());
     auto &gui = GUIdomain->newGUI();
     gui.add(N);
-    gui.add(neighbor_distance);
+    gui.add(T); // Threshold distance for neighbors
+    gui.add(K); // Number of neighbors to consider
+    gui.add(distanceToCenter);
     
   }
 
@@ -103,13 +107,11 @@ struct MyApp : public App {
   void reset(int n) {
     agent.clear();
     agent.resize(n); // n agents
-    loves.clear();
-    loves.resize(n);
+
     for (auto& a : agent) {
       a.pos(Vec3d(rs(), rs(), rs()));
     }
   }
-
 
 
   int lastN = 0;
@@ -119,24 +121,17 @@ struct MyApp : public App {
       lastN = N;
       reset(N);
     }
-    // Love setting
-    loves.resize(agent.size());
-    for (int i = 0; i < agent.size(); i++) {
-      if (i == agent.size()-1) {
-          loves[i] = agent[0];
-      } else {
-          loves[i] = agent[i+1];
-      }
-    }
 
+    // Mouse control
+    Vec3f mouse_position = Vec3f(mouse().x() / float(width()) * 2 - 1,
+                     1 - mouse().y() / float(height()) * 2,
+                     0);
 
     for (int i = 0; i < agent.size(); i++) {
       auto& me = agent[i];
-      auto& myTrueLove = loves[i];
-      me.faceToward(myTrueLove.pos(), 0.05);
-      me.moveF(0.7);
 
       Vec3d sum;
+      Vec3d headingSum;
       int count = 0;
 
       for (int j = 0; j < agent.size(); j++) {
@@ -146,21 +141,49 @@ struct MyApp : public App {
         // Neighboring agent
         auto& them = agent[j];
 
+
+        // For each agent, find up to K neighbors closer than some threshold distance T. 
         float distance = (me.pos() - them.pos()).mag();
-        if (distance < neighbor_distance) {
-          count++;
-          sum += them.pos();
-          // sum += me.pos();
+        if (count < K) {
+          if (distance < T){    
+            count++; // count neighbors within threshold distance
+            sum += them.pos(); // sum positions to then compute average position
+            headingSum += them.uf(); // uf() sum to then compute average heading
+            // If the agent is too close to any neighbor, nudge away from that neighbor.
+            if (distance < T/2) {
+              me.nudgeToward(them.pos(), -0.1); // nudge away from neighbor
+            }
+          }
         }
-      }
       
-      if (count > 1) {
-        Vec3d center = sum / (count + 1);
-        float distanceToCenter = (me.pos() - center).mag();
-        me.faceToward(center, 0.05);
-        me.moveF(-0.7);
-        }
       }
+      if (count > 1) {
+        sum += me.pos();
+
+        // Compute the average position of the neighbors and their average heading. 
+        Vec3d center = sum / (count + 1);
+        Vec3d averageHeading = headingSum / count;
+
+        me.faceToward(averageHeading, 0.05);
+        me.moveF(0.5);
+
+
+        float d = (me.pos() - center).mag();
+
+
+        // If the agent is too far away from the center of the neighbors, nudge toward the center. 
+        if (d > distanceToCenter) {
+            me.faceToward(center, 0.05);  
+            me.moveF(0.7);                
+        }
+      } else {
+        // No neighbors, just move forward
+        me.moveF(0.5);
+      }
+      if (i < 5) {
+        me.nudgeToward(mouse_position, 0.1); // nudge toward mouse
+      }
+    }
     
     for (auto& a : agent) {
       a.step(dt);
