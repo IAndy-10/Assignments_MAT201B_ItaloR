@@ -56,13 +56,13 @@ struct AlloApp : App {
     // set initial conditions of the simulation
     
 
-    auto randomColor = []() { return HSV(rnd::uniform(), 1.0f, 1.0f); };
+    // auto randomColor = []() { return HSV(rnd::uniform(), 1.0f, 1.0f); };
 
     particles.primitive(Mesh::POINTS);
 
     for (int _ = 0; _ < 500; _++) {
       particles.vertex(randomVec3f(5));
-      particles.color(randomColor());
+      particles.color(1.0, 1.0, 1.0); // white
 
       // float m = rnd::uniform(3.0, 0.5);
       float m = 3 + rnd::normal() / 2;

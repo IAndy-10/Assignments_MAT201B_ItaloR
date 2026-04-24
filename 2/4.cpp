@@ -32,9 +32,11 @@ struct AlloApp : App {
 
 
   ShaderProgram pointShader;
+  ShaderProgram fadeShader;
 
   //  simulation state
-  Mesh particles;  // position *is inside the mesh* mesh.vertices() are the positions
+  Mesh particles;
+  Mesh fadeQuad;  // position *is inside the mesh* mesh.vertices() are the positions
   vector<Vec3f> velocity;
   vector<Vec3f> force;
   vector<float> mass;
@@ -58,8 +60,19 @@ struct AlloApp : App {
 
   void onCreate() override {
     // compile shaders
+    fadeShader.compile(
+      R"(#version 400
+         layout(location = 0) in vec3 vertexPosition;
+         void main() { gl_Position = vec4(vertexPosition, 1.0); })",
+      R"(#version 400
+         uniform float fadeAlpha;
+         layout(location = 0) out vec4 outColor;
+         void main() { outColor = vec4(0.0, 0.0, 0.0, fadeAlpha); })",
+      ""
+    );
+
     pointShader.compile(slurp("../point-vertex.glsl"),
-                        slurp("../point-fragment.glsl"),
+                        slurp("../4-point-fragment.glsl"),
                         slurp("../point-geometry.glsl"));
 
     // set initial conditions of the simulation
@@ -88,6 +101,13 @@ struct AlloApp : App {
 
     nav().pos(0, 0, 10);
 
+    // Full-screen quad for trail fade effect
+    fadeQuad.primitive(Mesh::TRIANGLE_STRIP);
+    fadeQuad.vertex(-1, -1, 0);
+    fadeQuad.vertex( 1, -1, 0);
+    fadeQuad.vertex(-1,  1, 0);
+    fadeQuad.vertex( 1,  1, 0);
+
     // Love settings
     for (int i = 0; i < velocity.size(); i++) {
         lovers.push_back(i);
@@ -111,8 +131,10 @@ struct AlloApp : App {
 
   bool freeze = false;
   float k = .3; // spring constant
+  double lastDt{1.0 / 60};
 
   void onAnimate(double dt) override {
+    lastDt = dt;
     if (freeze) return;
 
     // calculate spring force between this particle and the origin
@@ -226,12 +248,21 @@ struct AlloApp : App {
   }
 
   void onDraw(Graphics &g) override {
-    g.clear(0.0);
+    // Fade previous frame toward black — decay to 2% brightness over 1 second
+    float fadeAlpha = 1.0f - pow(0.02f, (float)lastDt);
+    g.shader(fadeShader);
+    g.shader().uniform("fadeAlpha", fadeAlpha);
+    g.blending(true);
+    g.blendTrans();
+    g.depthTesting(false);
+    g.draw(fadeQuad);
+
+    // Draw particles — depth testing disabled so trails never block current positions
     g.shader(pointShader);
     g.shader().uniform("pointSize", pointSize / 100);
     g.blending(true);
     g.blendTrans();
-    g.depthTesting(true);
+    g.depthTesting(false);
     g.draw(particles);
   }
 };
