@@ -4,6 +4,8 @@
 #include "al/app/al_DistributedApp.hpp"
 #include "al/app/al_GUIDomain.hpp"
 #include "al/math/al_Random.hpp"
+#include "al_ext/statedistribution/al_CuttleboneDomain.hpp"
+#include "al_ext/statedistribution/al_CuttleboneStateSimulationDomain.hpp"
 
 using namespace al;
 
@@ -27,6 +29,7 @@ struct WorldState {
   int frame;
   Pose camera;
   Vec3f position[N];
+  Color color[N];
 };
 
 struct AlloApp : DistributedAppWithState<WorldState> {
@@ -49,6 +52,13 @@ struct AlloApp : DistributedAppWithState<WorldState> {
   vector<int> lovers;
 
   void onInit() override {
+    auto cuttleboneDomain =
+        CuttleboneStateSimulationDomain<WorldState>::enableCuttlebone(this);
+    if (!cuttleboneDomain) {
+      std::cerr << "ERROR: Could not start Cuttlebone. Quitting." << std::endl;
+      quit();
+    }
+
     if (isPrimary()) {
       // set up GUI
       auto GUIdomain = GUIDomain::enableGUI(defaultWindowDomain());
